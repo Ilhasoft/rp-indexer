@@ -17,6 +17,7 @@ type Config struct {
 	ContactsIndex    string `help:"the alias to use for the contact index"`
 	ContactsShards   int    `help:"the number of shards to use for the contacts index"`
 	ContactsReplicas int    `help:"the number of replicas to use for the contacts index"`
+	RetryIndexBatch  int    `help:"the number of retries for index batch"`
 }
 
 func NewDefaultConfig() *Config {
@@ -34,5 +35,6 @@ func NewDefaultConfig() *Config {
 		ContactsIndex:    "contacts",
 		ContactsShards:   2,
 		ContactsReplicas: 1,
+		RetryIndexBatch:  1,
 	}
 }
