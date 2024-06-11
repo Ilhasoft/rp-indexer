@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -29,7 +30,7 @@ type Stats struct {
 // Indexer is base interface for indexers
 type Indexer interface {
 	Name() string
-	Index(db *sql.DB, rebuild, cleanup bool) (string, error)
+	Index(db *sql.DB, rebuild, cleanup bool, retries int) (string, error)
 	Stats() Stats
 }
 
@@ -262,41 +263,54 @@ type indexResponse struct {
 	} `json:"items"`
 }
 
-// indexes the batch of contacts
-func (i *baseIndexer) indexBatch(index string, batch []byte) (int, int, error) {
-	response := indexResponse{}
+// indexBatch indexes the batch of contacts with retry and exponential backoff
+func (i *baseIndexer) indexBatch(index string, batch []byte, retries int) (int, int, error) {
+	var response indexResponse
 	indexURL := fmt.Sprintf("%s/%s/_bulk", i.elasticURL, index)
 
-	_, err := utils.MakeJSONRequest(http.MethodPut, indexURL, batch, &response)
-	if err != nil {
-		return 0, 0, err
-	}
+	baseDelay := time.Second
 
-	createdCount, deletedCount, conflictedCount := 0, 0, 0
-	for _, item := range response.Items {
-		if item.Index.ID != "" {
-			logrus.WithField("id", item.Index.ID).WithField("status", item.Index.Status).Debug("index response")
-			if item.Index.Status == 200 || item.Index.Status == 201 {
-				createdCount++
-			} else if item.Index.Status == 409 {
-				conflictedCount++
-			} else {
-				logrus.WithField("id", item.Index.ID).WithField("status", item.Index.Status).WithField("result", item.Index.Result).Error("error indexing document")
+	for attempt := 0; attempt < retries; attempt++ {
+		_, err := utils.MakeJSONRequest(http.MethodPut, indexURL, batch, &response)
+		if err != nil {
+			if attempt == retries-1 {
+				return 0, 0, err
 			}
-		} else if item.Delete.ID != "" {
-			logrus.WithField("id", item.Index.ID).WithField("status", item.Index.Status).Debug("delete response")
-			if item.Delete.Status == 200 {
-				deletedCount++
-			} else if item.Delete.Status == 409 {
-				conflictedCount++
-			}
-		} else {
-			logrus.Error("unparsed item in response")
+			delay := baseDelay * time.Duration(math.Pow(2, float64(attempt)))
+			logrus.WithField("attempt", attempt+1).WithField("delay", delay).Warn("retrying due to error")
+			time.Sleep(delay)
+			continue
 		}
-	}
-	logrus.WithField("created", createdCount).WithField("deleted", deletedCount).WithField("conflicted", conflictedCount).Debug("indexed batch")
 
-	return createdCount, deletedCount, nil
+		createdCount, deletedCount, conflictedCount := 0, 0, 0
+		for _, item := range response.Items {
+			if item.Index.ID != "" {
+				logrus.WithField("id", item.Index.ID).WithField("status", item.Index.Status).Debug("index response")
+				if item.Index.Status == 200 || item.Index.Status == 201 {
+					createdCount++
+				} else if item.Index.Status == 409 {
+					conflictedCount++
+				} else {
+					logrus.WithField("id", item.Index.ID).WithField("status", item.Index.Status).WithField("result", item.Index.Result).Error("error indexing document")
+				}
+			} else if item.Delete.ID != "" {
+				logrus.WithField("id", item.Index.ID).WithField("status", item.Index.Status).Debug("delete response")
+				if item.Delete.Status == 200 {
+					deletedCount++
+				} else if item.Delete.Status == 409 {
+					conflictedCount++
+				}
+			} else {
+				logrus.Error("unparsed item in response")
+			}
+		}
+		logrus.WithField("created", createdCount).WithField("deleted", deletedCount).WithField("conflicted", conflictedCount).Debug("indexed batch")
+
+		return createdCount, deletedCount, nil
+	}
+
+	// If the loop completes without returning, an error occurred
+	return 0, 0, fmt.Errorf("failed to index batch after %d attempts", retries)
 }
 
 // our response for finding the last modified document
