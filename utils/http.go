@@ -38,6 +38,7 @@ func shouldRetry(request *http.Request, response *http.Response, withDelay time.
 	}
 
 	if response.StatusCode == http.StatusBadRequest {
+		fmt.Printf("Retry error 400")
 		return true
 	}
 
