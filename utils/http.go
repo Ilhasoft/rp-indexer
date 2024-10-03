@@ -25,6 +25,10 @@ func init() {
 }
 
 func shouldRetry(request *http.Request, response *http.Response, withDelay time.Duration) bool {
+	if response.StatusCode == http.StatusBadRequest {
+		return true
+	}
+
 	// no response is a connection timeout which we can retry
 	if response == nil {
 		return true
@@ -54,7 +58,14 @@ func MakeJSONRequest(method string, url string, body []byte, jsonStruct interfac
 	req, _ := httpx.NewRequest(method, url, bytes.NewReader(body), map[string]string{"Content-Type": "application/json"})
 	resp, err := httpx.Do(http.DefaultClient, req, retryConfig, nil)
 
-	l := log.WithField("url", url).WithField("method", method).WithField("request", body)
+	l := log.WithField("url", url).WithField("method", method)
+	var formattedJSON bytes.Buffer
+	if err := json.Indent(&formattedJSON, body, "", "  "); err != nil {
+		formattedJSON.Write(body)
+	}
+
+	l.WithField("request", formattedJSON.String())
+
 	if err != nil {
 		l.WithError(err).Error("error making ES request")
 		return resp, err
@@ -68,7 +79,7 @@ func MakeJSONRequest(method string, url string, body []byte, jsonStruct interfac
 		return resp, err
 	}
 
-	l = l.WithField("response", string(jsonBody)).WithField("status", resp.StatusCode)
+	l.WithField("response", string(jsonBody)).WithField("status", resp.StatusCode)
 
 	// error if we got a non-200
 	if resp.StatusCode != http.StatusOK {
