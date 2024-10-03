@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/nyaruka/gocommon/httpx"
 	log "github.com/sirupsen/logrus"
 )
@@ -38,7 +39,7 @@ func shouldRetry(request *http.Request, response *http.Response, withDelay time.
 	}
 
 	if response.StatusCode == http.StatusBadRequest {
-		fmt.Printf("Retry error 400")
+		fmt.Println("Retry error 400")
 		return true
 	}
 
@@ -59,11 +60,14 @@ func MakeJSONRequest(method string, url string, body []byte, jsonStruct interfac
 	req, _ := httpx.NewRequest(method, url, bytes.NewReader(body), map[string]string{"Content-Type": "application/json"})
 	resp, err := httpx.Do(http.DefaultClient, req, retryConfig, nil)
 
-	l := log.WithField("url", url).WithField("method", method)
+	originalSize := len(body)
+
+	l := log.WithField("url", url).WithField("method", method).WithField("request header", req.Header).WithField("response header", resp.Header)
 	var formattedJSON bytes.Buffer
 	if err := json.Indent(&formattedJSON, body, "", "  "); err != nil {
 		formattedJSON.Write(body)
 	}
+	formattedSize := formattedJSON.Len()
 
 	l.WithField("request", formattedJSON.String())
 
@@ -80,11 +84,13 @@ func MakeJSONRequest(method string, url string, body []byte, jsonStruct interfac
 		return resp, err
 	}
 
-	l.WithField("response", string(jsonBody)).WithField("status", resp.StatusCode)
+	l = l.WithField("response", string(jsonBody)).WithField("status", resp.StatusCode)
 
 	// error if we got a non-200
 	if resp.StatusCode != http.StatusOK {
 		l.WithError(err).Error("error reaching ES")
+		time.Sleep(time.Second * 5)
+		sendFileToSentry(formattedJSON, originalSize, formattedSize, fmt.Errorf("received non 200 response %d: %s", resp.StatusCode, jsonBody), resp)
 		return resp, fmt.Errorf("received non 200 response %d: %s", resp.StatusCode, jsonBody)
 	}
 
@@ -101,4 +107,22 @@ func MakeJSONRequest(method string, url string, body []byte, jsonStruct interfac
 
 	l.Debug("ES request successful")
 	return resp, nil
+}
+
+func sendFileToSentry(formattedJSON bytes.Buffer, originalSize int, formattedSize int, err error, resp *http.Response) {
+	sentry.WithScope(func(scope *sentry.Scope) {
+		scope.SetExtra("original_body_size", originalSize)
+		scope.SetExtra("formatted_body_size", formattedSize)
+		scope.SetExtra("response header", resp.Header)
+		scope.SetExtra("response body", resp.Body)
+		scope.SetExtra("status", resp.StatusCode)
+		scope.AddAttachment(&sentry.Attachment{
+			Filename:    "request_body.json",
+			ContentType: "application/json",
+			Payload:     formattedJSON.Bytes(),
+		})
+
+		sentry.CaptureException(err)
+	})
+	sentry.Flush(6 * time.Second)
 }
