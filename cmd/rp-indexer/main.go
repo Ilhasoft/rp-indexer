@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/evalphobia/logrus_sentry"
+	"github.com/getsentry/sentry-go"
 	_ "github.com/lib/pq"
 	"github.com/nyaruka/ezconf"
 	indexer "github.com/nyaruka/rp-indexer/v8"
@@ -47,6 +48,14 @@ func main() {
 			log.Fatalf("invalid sentry DSN: '%s': %s", cfg.SentryDSN, err)
 		}
 		log.StandardLogger().Hooks.Add(hook)
+
+		err = sentry.Init(sentry.ClientOptions{
+			Dsn: cfg.SentryDSN,
+		})
+		if err != nil {
+			log.Fatalf("Sentry init failed: %v", err)
+		}
+		defer sentry.Flush(2 * time.Second)
 	}
 
 	db, err := sql.Open("postgres", cfg.DB)
