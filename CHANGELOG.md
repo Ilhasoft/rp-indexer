@@ -1,3 +1,25 @@
+v8.2.0 (2023-07-31)
+-------------------------
+ * Fix docker file
+
+v8.0.3 (2023-05-22)
+-------------------------
+ * Change some debug logging to trace level
+
+v8.0.2 (2023-05-22)
+-------------------------
+ * Stop logging all ES requests in debug mode (only log errors)
+
+v8.0.1 (2023-05-19)
+-------------------------
+ * Add major version to import path to allow use as library
+ * Use services in github actions
+
+v8.0.0 (2023-01-09)
+-------------------------
+ * Test against postgres 14
+ * Test against latest elastic search 7.17.x
+
 v7.5.0
 ----------
  * Change index setting to contacts_index
