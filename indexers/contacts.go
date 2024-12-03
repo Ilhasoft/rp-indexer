@@ -2,13 +2,14 @@ package indexers
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 //go:embed contacts.index.json
@@ -33,6 +34,7 @@ func NewContactIndexer(elasticURL, name string, shards, replicas, batchSize int)
 
 // Index indexes modified contacts and returns the name of the concrete index
 func (i *ContactIndexer) Index(db *sql.DB, rebuild, cleanup bool) (string, error) {
+	ctx := context.TODO()
 	var err error
 
 	// find our physical index
@@ -52,7 +54,7 @@ func (i *ContactIndexer) Index(db *sql.DB, rebuild, cleanup bool) (string, error
 		if err != nil {
 			return "", errors.Wrap(err, "error creating new index")
 		}
-		i.log().WithField("index", physicalIndex).Info("created new physical index")
+		i.log().Info("created new physical index", "index", physicalIndex)
 		remapAlias = true
 	}
 
@@ -61,11 +63,11 @@ func (i *ContactIndexer) Index(db *sql.DB, rebuild, cleanup bool) (string, error
 		return "", errors.Wrap(err, "error finding last modified")
 	}
 
-	i.log().WithField("index", physicalIndex).WithField("last_modified", lastModified).Debug("indexing newer than last modified")
+	i.log().Debug("indexing newer than last modified", "index", physicalIndex, "last_modified", lastModified)
 
 	// now index our docs
 	start := time.Now()
-	indexed, deleted, err := i.indexModified(db, physicalIndex, lastModified.Add(-5*time.Second), rebuild)
+	indexed, deleted, err := i.indexModified(ctx, db, physicalIndex, lastModified.Add(-5*time.Second), rebuild)
 	if err != nil {
 		return "", errors.Wrap(err, "error indexing documents")
 	}
@@ -154,7 +156,7 @@ SELECT org_id, id, modified_on, is_active, row_to_json(t) FROM (
 `
 
 // IndexModified queries and indexes all contacts with a lastModified greater than or equal to the passed in time
-func (i *ContactIndexer) indexModified(db *sql.DB, index string, lastModified time.Time, rebuild bool) (int, int, error) {
+func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index string, lastModified time.Time, rebuild bool) (int, int, error) {
 	totalFetched, totalCreated, totalDeleted := 0, 0, 0
 
 	var modifiedOn time.Time
@@ -186,7 +188,7 @@ func (i *ContactIndexer) indexModified(db *sql.DB, index string, lastModified ti
 			return nil
 		}
 
-		rows, err := db.Query(sqlSelectModifiedContacts, lastModified)
+		rows, err := db.QueryContext(ctx, sqlSelectModifiedContacts, lastModified)
 
 		queryModified := lastModified
 
@@ -209,14 +211,14 @@ func (i *ContactIndexer) indexModified(db *sql.DB, index string, lastModified ti
 			lastModified = modifiedOn
 
 			if isActive {
-				logrus.WithField("id", id).WithField("modifiedOn", modifiedOn).WithField("contact", contactJSON).Trace("modified contact")
+				slog.Debug("modified contact", "id", id, "modifiedOn", modifiedOn, "contact", contactJSON)
 
 				subBatch.WriteString(fmt.Sprintf(indexCommand, id, modifiedOn.UnixNano(), orgID))
 				subBatch.WriteString("\n")
 				subBatch.WriteString(contactJSON)
 				subBatch.WriteString("\n")
 			} else {
-				logrus.WithField("id", id).WithField("modifiedOn", modifiedOn).Trace("deleted contact")
+				slog.Debug("deleted contact", "id", id, "modifiedOn", modifiedOn)
 
 				subBatch.WriteString(fmt.Sprintf(deleteCommand, id, modifiedOn.UnixNano(), orgID))
 				subBatch.WriteString("\n")
@@ -246,16 +248,16 @@ func (i *ContactIndexer) indexModified(db *sql.DB, index string, lastModified ti
 		batchTime := time.Since(batchStart)
 		batchRate := int(float32(batchFetched) / (float32(batchTime) / float32(time.Second)))
 
-		log := i.log().WithField("index", index).WithFields(logrus.Fields{
-			"rate":             batchRate,
-			"batch_fetched":    batchFetched,
-			"batch_created":    batchCreated,
-			"batch_elapsed":    batchTime,
-			"batch_elapsed_es": batchESTime,
-			"total_fetched":    totalFetched,
-			"total_created":    totalCreated,
-			"total_elapsed":    totalTime,
-		})
+		log := i.log().With("index", index,
+			"rate", batchRate,
+			"batch_fetched", batchFetched,
+			"batch_created", batchCreated,
+			"batch_elapsed", batchTime,
+			"batch_elapsed_es", batchESTime,
+			"total_fetched", totalFetched,
+			"total_created", totalCreated,
+			"total_elapsed", totalTime,
+		)
 
 		// if we're rebuilding, always log batch progress
 		if rebuild {
