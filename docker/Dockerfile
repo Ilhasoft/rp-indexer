@@ -16,4 +16,4 @@ WORKDIR /app
 COPY --from=builder bin/rp-indexer ./
 
 EXPOSE 8080
-ENTRYPOINT ["rp-indexer"]
+ENTRYPOINT ["./rp-indexer"]
