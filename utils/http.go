@@ -61,7 +61,10 @@ func MakeJSONRequest(method string, url string, body []byte, dest any) (*http.Re
 
 	req, _ := httpx.NewRequest(method, url, bytes.NewReader(body), map[string]string{"Content-Type": "application/json"})
 	resp, err := httpx.Do(http.DefaultClient, req, retryConfig, nil)
-
+	if err != nil {
+		l.Error("error making request", "error", err)
+		return resp, err
+	}
 	originalSize := len(body)
 
 	l = l.With("request header", req.Header, "response header", resp.Header)
@@ -73,10 +76,6 @@ func MakeJSONRequest(method string, url string, body []byte, dest any) (*http.Re
 
 	l = l.With("request", formattedJSON.String())
 
-	if err != nil {
-		l.Error("error making request", "error", err)
-		return resp, err
-	}
 	defer resp.Body.Close()
 
 	// if we have a body, try to decode it
