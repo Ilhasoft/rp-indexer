@@ -1,20 +1,19 @@
-FROM golang:1.19-alpine3.18
+FROM golang:1.23-bookworm AS builder
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download -x
+
+COPY . ./
+
+RUN GOOS=linux GOARCH=amd64 go build -o /bin/rp-indexer ./cmd/rp-indexer/*.go
+
+FROM gcr.io/distroless/base-debian12
 
 WORKDIR /app
 
-RUN apk update \
-  && apk add --virtual build-deps gcc git \
-  && rm -rf /var/cache/apk/*
-
-RUN addgroup -S golang \
-  && adduser -S -G golang golang
-
-COPY . .
-
-RUN go install -v ./cmd/...
-RUN chown -R golang /app
-
-USER golang
+COPY --from=builder bin/rp-indexer ./
 
 EXPOSE 8080
-ENTRYPOINT ["rp-indexer"]
+ENTRYPOINT ["./rp-indexer"]

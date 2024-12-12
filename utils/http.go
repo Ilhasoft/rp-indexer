@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/nyaruka/gocommon/httpx"
-	log "github.com/sirupsen/logrus"
 )
 
 var retryConfig *httpx.RetryConfig
@@ -44,62 +44,61 @@ func shouldRetry(request *http.Request, response *http.Response, withDelay time.
 	}
 
 	// check for unexpected EOF
-	bodyBytes, err := ioutil.ReadAll(response.Body)
+	bodyBytes, err := io.ReadAll(response.Body)
 	response.Body.Close()
 	if err != nil {
-		log.WithError(err).Error("error reading ES response, retrying")
+		slog.Error("error reading ES response, retrying", "error", err)
 		return true
 	}
 
-	response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+	response.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	return false
 }
 
 // MakeJSONRequest is a utility function to make a JSON request, optionally decoding the response into the passed in struct
 func MakeJSONRequest(method string, url string, body []byte, dest any) (*http.Response, error) {
-	l := log.WithField("url", url).WithField("method", method)
+	l := slog.With("url", url, "method", method)
 
 	req, _ := httpx.NewRequest(method, url, bytes.NewReader(body), map[string]string{"Content-Type": "application/json"})
 	resp, err := httpx.Do(http.DefaultClient, req, retryConfig, nil)
-
+	if err != nil {
+		l.Error("error making request", "error", err)
+		return resp, err
+	}
 	originalSize := len(body)
 
-	l.WithField("request header", req.Header).WithField("response header", resp.Header)
+	l = l.With("request header", req.Header, "response header", resp.Header)
 	var formattedJSON bytes.Buffer
 	if err := json.Indent(&formattedJSON, body, "", "  "); err != nil {
 		formattedJSON.Write(body)
 	}
 	formattedSize := formattedJSON.Len()
 
-	l.WithField("request", formattedJSON.String())
+	l = l.With("request", formattedJSON.String())
 
-	if err != nil {
-		l.WithError(err).Error("error making request")
-		return resp, err
-	}
 	defer resp.Body.Close()
 
 	// if we have a body, try to decode it
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		l.WithError(err).Error("error reading response")
+		l.Error("error reading response", "error", err)
 		return resp, err
 	}
 
-	l = l.WithField("response", string(respBody)).WithField("status", resp.StatusCode)
+	l = l.With("response", string(respBody), "status", resp.StatusCode)
 
 	// error if we got a non-200
 	if resp.StatusCode != http.StatusOK {
-		l.WithError(err).Error("error reaching ES")
+		l.Error("error reaching ES", "error", err)
 		time.Sleep(time.Second * 5)
 		sendFileToSentry(formattedJSON, originalSize, formattedSize, fmt.Errorf("received non 200 response %d: %s", resp.StatusCode, respBody), resp)
-		return resp, fmt.Errorf("received non 200 response %d: %s", resp.StatusCode, respBody)
+		return resp, fmt.Errorf("received non-200 response %d: %s", resp.StatusCode, respBody)
 	}
 
 	if dest != nil {
 		err = json.Unmarshal(respBody, dest)
 		if err != nil {
-			l.WithError(err).Error("error unmarshalling response")
+			l.Error("error unmarshalling response", "error", err)
 			return resp, err
 		}
 	}
