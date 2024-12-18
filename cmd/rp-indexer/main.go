@@ -53,12 +53,6 @@ func main() {
 			log.Fatalf("error initiating sentry client, error %s, dsn %s", err, cfg.SentryDSN)
 			os.Exit(1)
 		}
-		err = sentry.Init(sentry.ClientOptions{
-			Dsn: cfg.SentryDSN,
-		})
-		if err != nil {
-			log.Fatalf("Sentry init failed: %v", err)
-		}
 
 		defer sentry.Flush(2 * time.Second)
 		logger = slog.New(
