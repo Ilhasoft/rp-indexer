@@ -6,10 +6,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
-	"log/slog"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 //go:embed contacts.index.json
@@ -52,33 +49,30 @@ func (i *ContactIndexer) Index(db *sql.DB, rebuild, cleanup bool) (string, error
 	if physicalIndex == "" || rebuild {
 		physicalIndex, err = i.createNewIndex(i.definition)
 		if err != nil {
-			return "", errors.Wrap(err, "error creating new index")
+			return "", fmt.Errorf("error creating new index: %w", err)
 		}
 		i.log().Info("created new physical index", "index", physicalIndex)
 		remapAlias = true
 	}
 
-	lastModified, err := i.GetLastModified(physicalIndex)
+	lastModified, err := i.GetESLastModified(physicalIndex)
 	if err != nil {
-		return "", errors.Wrap(err, "error finding last modified")
+		return "", fmt.Errorf("error finding last modified: %w", err)
 	}
 
 	i.log().Debug("indexing newer than last modified", "index", physicalIndex, "last_modified", lastModified)
 
 	// now index our docs
-	start := time.Now()
-	indexed, deleted, err := i.indexModified(ctx, db, physicalIndex, lastModified.Add(-5*time.Second), rebuild)
+	err = i.indexModified(ctx, db, physicalIndex, lastModified.Add(-5*time.Second), rebuild)
 	if err != nil {
-		return "", errors.Wrap(err, "error indexing documents")
+		return "", fmt.Errorf("error indexing documents: %w", err)
 	}
-
-	i.recordComplete(indexed, deleted, time.Since(start))
 
 	// if the index didn't previously exist or we are rebuilding, remap to our alias
 	if remapAlias {
 		err := i.updateAlias(physicalIndex)
 		if err != nil {
-			return "", errors.Wrap(err, "error updating alias")
+			return "", fmt.Errorf("error updating alias: %w", err)
 		}
 		remapAlias = false
 	}
@@ -87,7 +81,7 @@ func (i *ContactIndexer) Index(db *sql.DB, rebuild, cleanup bool) (string, error
 	if cleanup {
 		err := i.cleanupIndexes()
 		if err != nil {
-			return "", errors.Wrap(err, "error cleaning up old indexes")
+			return "", fmt.Errorf("error cleaning up old indexes: %w", err)
 		}
 	}
 
@@ -156,8 +150,8 @@ SELECT org_id, id, modified_on, is_active, row_to_json(t) FROM (
 `
 
 // IndexModified queries and indexes all contacts with a lastModified greater than or equal to the passed in time
-func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index string, lastModified time.Time, rebuild bool) (int, int, error) {
-	totalFetched, totalCreated, totalDeleted := 0, 0, 0
+func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index string, lastModified time.Time, rebuild bool) error {
+	totalFetched, totalCreated, totalUpdated, totalDeleted := 0, 0, 0, 0
 
 	var modifiedOn time.Time
 	var contactJSON string
@@ -171,18 +165,20 @@ func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index st
 		batchStart := time.Now()        // start time for this batch
 		batchFetched := 0               // contacts fetched in this batch
 		batchCreated := 0               // contacts created in ES
+		batchUpdated := 0               // contacts updated in ES
 		batchDeleted := 0               // contacts deleted in ES
 		batchESTime := time.Duration(0) // time spent indexing for this batch
 
 		indexSubBatch := func(b *bytes.Buffer) error {
 			t := time.Now()
-			created, deleted, err := i.indexBatch(index, b.Bytes())
+			created, updated, deleted, err := i.indexBatch(index, b.Bytes())
 			if err != nil {
 				return err
 			}
 
 			batchESTime += time.Since(t)
 			batchCreated += created
+			batchUpdated += updated
 			batchDeleted += deleted
 			b.Reset()
 			return nil
@@ -194,31 +190,31 @@ func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index st
 
 		// no more rows? return
 		if err == sql.ErrNoRows {
-			return 0, 0, nil
+			return nil
 		}
 		if err != nil {
-			return 0, 0, err
+			return err
 		}
 		defer rows.Close()
 
 		for rows.Next() {
 			err = rows.Scan(&orgID, &id, &modifiedOn, &isActive, &contactJSON)
 			if err != nil {
-				return 0, 0, err
+				return err
 			}
 
 			batchFetched++
 			lastModified = modifiedOn
 
 			if isActive {
-				slog.Debug("modified contact", "id", id, "modifiedOn", modifiedOn, "contact", contactJSON)
+				i.log().Debug("modified contact", "id", id, "modifiedOn", modifiedOn, "contact", contactJSON)
 
 				subBatch.WriteString(fmt.Sprintf(indexCommand, id, modifiedOn.UnixNano(), orgID))
 				subBatch.WriteString("\n")
 				subBatch.WriteString(contactJSON)
 				subBatch.WriteString("\n")
 			} else {
-				slog.Debug("deleted contact", "id", id, "modifiedOn", modifiedOn)
+				i.log().Debug("deleted contact", "id", id, "modifiedOn", modifiedOn)
 
 				subBatch.WriteString(fmt.Sprintf(deleteCommand, id, modifiedOn.UnixNano(), orgID))
 				subBatch.WriteString("\n")
@@ -227,14 +223,14 @@ func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index st
 			// write to elastic search in batches
 			if batchFetched%i.batchSize == 0 {
 				if err := indexSubBatch(subBatch); err != nil {
-					return 0, 0, err
+					return err
 				}
 			}
 		}
 
 		if subBatch.Len() > 0 {
 			if err := indexSubBatch(subBatch); err != nil {
-				return 0, 0, err
+				return err
 			}
 		}
 
@@ -242,6 +238,7 @@ func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index st
 
 		totalFetched += batchFetched
 		totalCreated += batchCreated
+		totalUpdated += batchUpdated
 		totalDeleted += batchDeleted
 
 		totalTime := time.Since(start)
@@ -252,10 +249,12 @@ func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index st
 			"rate", batchRate,
 			"batch_fetched", batchFetched,
 			"batch_created", batchCreated,
+			"batch_updated", batchUpdated,
 			"batch_elapsed", batchTime,
 			"batch_elapsed_es", batchESTime,
 			"total_fetched", totalFetched,
 			"total_created", totalCreated,
+			"total_updated", totalUpdated,
 			"total_elapsed", totalTime,
 		)
 
@@ -266,11 +265,23 @@ func (i *ContactIndexer) indexModified(ctx context.Context, db *sql.DB, index st
 			log.Debug("indexed contact batch")
 		}
 
+		i.recordActivity(batchCreated+batchUpdated, batchDeleted, time.Since(batchStart))
+
 		// last modified stayed the same and we didn't add anything, seen it all, break out
 		if lastModified.Equal(queryModified) && batchCreated == 0 {
 			break
 		}
 	}
 
-	return totalCreated, totalDeleted, nil
+	return nil
+}
+
+func (i *ContactIndexer) GetDBLastModified(ctx context.Context, db *sql.DB) (time.Time, error) {
+	lastModified := time.Time{}
+
+	if err := db.QueryRowContext(ctx, "SELECT MAX(modified_on) FROM contacts_contact").Scan(&lastModified); err != nil {
+		return lastModified, err
+	}
+
+	return lastModified, nil
 }
