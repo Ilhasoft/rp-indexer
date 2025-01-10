@@ -1,6 +1,7 @@
 package indexers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,19 +12,19 @@ import (
 	"time"
 
 	"github.com/nyaruka/gocommon/jsonx"
-	"github.com/nyaruka/rp-indexer/v8/utils"
+	"github.com/nyaruka/rp-indexer/v9/utils"
 )
 
 // indexes a document
-const indexCommand = `{ "index": { "_id": %d, "_type": "_doc", "version": %d, "version_type": "external", "routing": %d} }`
+const indexCommand = `{ "index": { "_id": %d, "version": %d, "version_type": "external", "routing": %d} }`
 
 // deletes a document
-const deleteCommand = `{ "delete" : { "_id": %d, "_type": "_doc", "version": %d, "version_type": "external", "routing": %d} }`
+const deleteCommand = `{ "delete" : { "_id": %d, "version": %d, "version_type": "external", "routing": %d} }`
 
 type Stats struct {
 	Indexed int64         // total number of documents indexed
 	Deleted int64         // total number of documents deleted
-	Elapsed time.Duration // total time spent actually indexing
+	Elapsed time.Duration // total time spent actually indexing (excludes poll delay)
 }
 
 // Indexer is base interface for indexers
@@ -31,6 +32,9 @@ type Indexer interface {
 	Name() string
 	Index(db *sql.DB, rebuild, cleanup bool) (string, error)
 	Stats() Stats
+
+	GetESLastModified(index string) (time.Time, error)
+	GetDBLastModified(ctx context.Context, db *sql.DB) (time.Time, error)
 }
 
 // IndexDefinition is what we pass to elastic to create an index,
@@ -49,7 +53,7 @@ type IndexDefinition struct {
 
 func newIndexDefinition(base []byte, shards, replicas int) *IndexDefinition {
 	d := &IndexDefinition{}
-	jsonx.MustUnmarshal(contactsIndexDef, d)
+	jsonx.MustUnmarshal(base, d)
 
 	d.Settings.Index.NumberOfShards = shards
 	d.Settings.Index.NumberOfReplicas = replicas
@@ -80,8 +84,8 @@ func (i *baseIndexer) log() *slog.Logger {
 	return slog.With("indexer", i.name)
 }
 
-// records a complete index and updates statistics
-func (i *baseIndexer) recordComplete(indexed, deleted int, elapsed time.Duration) {
+// records indexing activity and updates statistics
+func (i *baseIndexer) recordActivity(indexed, deleted int, elapsed time.Duration) {
 	i.stats.Indexed += int64(indexed)
 	i.stats.Deleted += int64(deleted)
 	i.stats.Elapsed += elapsed
@@ -147,7 +151,7 @@ func (i *baseIndexer) createNewIndex(def *IndexDefinition) (string, error) {
 	// create the new index
 	settings := jsonx.MustMarshal(def)
 
-	_, err := utils.MakeJSONRequest(http.MethodPut, fmt.Sprintf("%s/%s?include_type_name=true", i.elasticURL, index), settings, nil)
+	_, err := utils.MakeJSONRequest(http.MethodPut, fmt.Sprintf("%s/%s", i.elasticURL, index), settings, nil)
 	if err != nil {
 		return "", err
 	}
@@ -263,20 +267,23 @@ type indexResponse struct {
 }
 
 // indexes the batch of contacts
-func (i *baseIndexer) indexBatch(index string, batch []byte) (int, int, error) {
+func (i *baseIndexer) indexBatch(index string, batch []byte) (int, int, int, error) {
 	response := indexResponse{}
 	indexURL := fmt.Sprintf("%s/%s/_bulk", i.elasticURL, index)
 
 	_, err := utils.MakeJSONRequest(http.MethodPut, indexURL, batch, &response)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
-	createdCount, deletedCount, conflictedCount := 0, 0, 0
+	createdCount, updatedCount, deletedCount, conflictedCount := 0, 0, 0, 0
+
 	for _, item := range response.Items {
 		if item.Index.ID != "" {
 			slog.Debug("index response", "id", item.Index.ID, "status", item.Index.Status)
-			if item.Index.Status == 200 || item.Index.Status == 201 {
+			if item.Index.Status == 200 {
+				updatedCount++
+			} else if item.Index.Status == 201 {
 				createdCount++
 			} else if item.Index.Status == 409 {
 				conflictedCount++
@@ -294,8 +301,10 @@ func (i *baseIndexer) indexBatch(index string, batch []byte) (int, int, error) {
 			slog.Error("unparsed item in response")
 		}
 	}
-	slog.Debug("indexed batch", "created", createdCount, "deleted", deletedCount, "conflicted", conflictedCount)
-	return createdCount, deletedCount, nil
+
+	slog.Debug("indexed batch", "created", createdCount, "updated", updatedCount, "deleted", deletedCount, "conflicted", conflictedCount)
+
+	return createdCount, updatedCount, deletedCount, nil
 }
 
 // our response for finding the last modified document
@@ -313,13 +322,18 @@ type queryResponse struct {
 	} `json:"hits"`
 }
 
-// GetLastModified queries a concrete index and finds the last modified document, returning its modified time
-func (i *baseIndexer) GetLastModified(index string) (time.Time, error) {
+// GetESLastModified queries a concrete index and finds the last modified document, returning its modified time
+func (i *baseIndexer) GetESLastModified(index string) (time.Time, error) {
 	lastModified := time.Time{}
 
 	// get the newest document on our index
-	queryResponse := queryResponse{}
-	_, err := utils.MakeJSONRequest(http.MethodPost, fmt.Sprintf("%s/%s/_search", i.elasticURL, index), []byte(`{ "sort": [{ "modified_on_mu": "desc" }]}`), &queryResponse)
+	queryResponse := &queryResponse{}
+	_, err := utils.MakeJSONRequest(
+		http.MethodPost,
+		fmt.Sprintf("%s/%s/_search", i.elasticURL, index),
+		[]byte(`{ "sort": [{ "modified_on_mu": "desc" }], "_source": {"includes": ["modified_on", "id"]}, "size": 1, "track_total_hits": false}`),
+		queryResponse,
+	)
 	if err != nil {
 		return lastModified, err
 	}

@@ -1,3 +1,58 @@
+v9.2.0 (2024-07-17)
+-------------------------
+ * Test against postgresql 15
+ * Update dependencies
+ * Test against Elasticsearch 8
+
+v9.1.9 (2024-06-10)
+-------------------------
+ * Record stats inside indexing batch loop
+ * Split up created vs updated in progress logging
+ * Add track_total_hits to GetESLastModified
+
+v9.1.8 (2024-06-05)
+-------------------------
+ * Update github actions versions
+ * Add healthcheck for elastic service in CI tests
+ * Update goreleaser config to v2
+
+v9.1.7 (2024-06-05)
+-------------------------
+ * Remove multi-search-db CI testing because it's unreliable
+
+v9.1.6 (2024-06-04)
+-------------------------
+ * Remove opensearch from CI
+
+v9.1.5 (2024-06-04)
+-------------------------
+ * Update slog-multi
+
+v9.1.4 (2024-06-03)
+-------------------------
+ * Update deps
+ * Use std lib errors
+
+v9.1.3 (2024-05-16)
+-------------------------
+ * Reduce batch size to 100,000
+ * Test with OpenSearch 2.13 as well
+
+v9.1.2 (2024-05-14)
+-------------------------
+ * Remove deprecated _doc from mapping to support ES8 / OS2
+ * Test against Elastic 7.x and 8.x and OpenSearch 1.x
+ * Rewrite tests to make raw HTTP calls to elastic and not use the old library
+
+v9.1.1 (2024-04-25)
+-------------------------
+ * Add reporting of lag as a metric
+
+v9.1.0 (2024-04-15)
+-------------------------
+ * Update deps and bump main package to v9
+ * Finish switching to use slog for logging
+
 v9.0.0 (2024-01-05)
 -------------------------
  * Update dependencies
