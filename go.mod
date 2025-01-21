@@ -3,6 +3,7 @@ module github.com/nyaruka/rp-indexer/v9
 go 1.23
 
 require (
+	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.43.3
 	github.com/getsentry/sentry-go v0.28.1
 	github.com/lib/pq v1.10.9
 	github.com/nyaruka/ezconf v0.3.0
@@ -12,7 +13,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 )
 
-require golang.org/x/text v0.16.0 // indirect
+require golang.org/x/text v0.20.0 // indirect
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.32.6 // indirect
@@ -42,10 +43,9 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/samber/lo v1.47.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	golang.org/x/exp v0.0.0-20240716175740-e3f259677ff7 // indirect
-	golang.org/x/net v0.27.0 // indirect
-	golang.org/x/sys v0.22.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
+	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
+	golang.org/x/net v0.31.0 // indirect
+	golang.org/x/sys v0.27.0 // indirect
+	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
