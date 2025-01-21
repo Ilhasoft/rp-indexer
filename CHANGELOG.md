@@ -1,3 +1,31 @@
+v10.0.0 (2025-01-07)
+-------------------------
+ * Update README.md
+
+v9.3.4 (2024-12-16)
+-------------------------
+ * Update to latest gocommon and tweak default cloudwatch namespace
+
+v9.3.3 (2024-12-13)
+-------------------------
+ * Clean up old analytics use
+
+v9.3.2 (2024-12-13)
+-------------------------
+ * Update to latest gocommon
+
+v9.3.1 (2024-12-13)
+-------------------------
+ * Remove librato, use latest gocommon
+
+v9.3.0 (2024-12-13)
+-------------------------
+ * Send metrics to cloudwatch
+
+v9.2.1 (2024-10-08)
+-------------------------
+ * Don't include status groups in contact indexing
+
 v9.2.0 (2024-07-17)
 -------------------------
  * Test against postgresql 15
