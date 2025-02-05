@@ -1,3 +1,7 @@
+1.2.2-indexer-10.0.0
+----------
+ * Update to version v10.0.0
+
 1.2.2-indexer-9.2.0
 ----------
  * Update to version v9.2.0
