@@ -1,5 +1,6 @@
 # 🗃️ Indexer
 
+[![tag](https://img.shields.io/github/tag/nyaruka/rp-indexer.svg)](https://github.com/nyaruka/rp-indexer/releases)
 [![Build Status](https://github.com/nyaruka/rp-indexer/workflows/CI/badge.svg)](https://github.com/nyaruka/rp-indexer/actions?query=workflow%3ACI) 
 [![codecov](https://codecov.io/gh/nyaruka/rp-indexer/branch/main/graph/badge.svg)](https://codecov.io/gh/nyaruka/rp-indexer) 
 [![Go Report Card](https://goreportcard.com/badge/github.com/nyaruka/rp-indexer)](https://goreportcard.com/report/github.com/nyaruka/rp-indexer)
@@ -43,11 +44,12 @@ environment variables and parameters and for more details on each option.
 ### AWS services:
 
  * `INDEXER_AWS_ACCESS_KEY_ID`: AWS access key id used to authenticate to AWS
- * `INDEXER_AWS_SECRET_ACCESS_KEY` AWS secret access key used to authenticate to AWS
+ * `INDEXER_AWS_SECRET_ACCESS_KEY`: AWS secret access key used to authenticate to AWS
  * `INDEXER_AWS_REGION`: AWS region (ex: `eu-west-1`)
  
 ### Logging and error reporting:
 
+ * `INDEXER_DEPLOYMENT_ID`: used for metrics reporting
  * `INDEXER_SENTRY_DSN`: DSN to use when logging errors to Sentry
  * `INDEXER_LOG_LEVEL`: logging level to use (default is `info`)
 

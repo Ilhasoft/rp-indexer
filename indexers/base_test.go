@@ -2,6 +2,7 @@ package indexers_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"io"
 	"log/slog"
@@ -15,8 +16,8 @@ import (
 	"github.com/nyaruka/gocommon/elastic"
 	"github.com/nyaruka/gocommon/httpx"
 	"github.com/nyaruka/gocommon/jsonx"
-	"github.com/nyaruka/rp-indexer/v9/indexers"
-	"github.com/nyaruka/rp-indexer/v9/runtime"
+	"github.com/nyaruka/rp-indexer/v10/indexers"
+	"github.com/nyaruka/rp-indexer/v10/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -90,7 +91,7 @@ func elasticRequest(t *testing.T, cfg *runtime.Config, method, path string, data
 	if data != nil {
 		body = bytes.NewReader(jsonx.MustMarshal(data))
 	}
-	req, err := httpx.NewRequest(method, cfg.ElasticURL+path, body, map[string]string{"Content-Type": "application/json"})
+	req, err := httpx.NewRequest(context.Background(), method, cfg.ElasticURL+path, body, map[string]string{"Content-Type": "application/json"})
 	require.NoError(t, err)
 
 	trace, err := httpx.DoTrace(http.DefaultClient, req, nil, nil, -1)
