@@ -1,3 +1,17 @@
+v10.2.0 (2025-07-01)
+-------------------------
+ * Update dependencies
+
+v10.1.1 (2025-03-28)
+-------------------------
+ * Update to latest gocommon
+
+v10.1.0 (2025-03-13)
+-------------------------
+ * Bump package name to v10
+ * Update to go 1.24
+ * Update deps
+
 v10.0.0 (2025-01-07)
 -------------------------
  * Update README.md

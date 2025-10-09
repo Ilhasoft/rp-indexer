@@ -9,8 +9,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/nyaruka/gocommon/aws/cwatch"
-	"github.com/nyaruka/rp-indexer/v9/indexers"
-	"github.com/nyaruka/rp-indexer/v9/runtime"
+	"github.com/nyaruka/rp-indexer/v10/indexers"
+	"github.com/nyaruka/rp-indexer/v10/runtime"
 )
 
 type Daemon struct {
@@ -141,7 +141,7 @@ func (d *Daemon) reportStats(includeLag bool) {
 }
 
 func (d *Daemon) calculateLag(ctx context.Context, ix indexers.Indexer) (time.Duration, error) {
-	esLastModified, err := ix.GetESLastModified(ix.Name())
+	esLastModified, err := ix.GetESLastModified(ctx, ix.Name())
 	if err != nil {
 		return 0, fmt.Errorf("error getting ES last modified: %w", err)
 	}
