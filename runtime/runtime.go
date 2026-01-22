@@ -3,6 +3,7 @@ package runtime
 import (
 	"database/sql"
 
+	_ "github.com/lib/pq"
 	"github.com/nyaruka/gocommon/aws/cwatch"
 )
 
