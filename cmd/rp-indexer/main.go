@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	_ "github.com/lib/pq"
 	"github.com/nyaruka/ezconf"
 	"github.com/nyaruka/gocommon/aws/cwatch"
 	indexer "github.com/nyaruka/rp-indexer/v10"

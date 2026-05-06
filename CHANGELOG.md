@@ -1,3 +1,20 @@
+v26.0.0 (2026-01-05)
+-------------------------
+ * Add devcontainer configuration
+
+v10.3.2 (2025-10-13)
+-------------------------
+ * Revert switch from lib/pq to jackc/pgx/stdlib
+
+v10.3.1 (2025-10-13)
+-------------------------
+ * Switch from lib/pq to jackc/pgx/stdlib
+
+v10.3.0 (2025-10-03)
+-------------------------
+ * Update dependecies
+ * Bump to go 1.25
+
 v10.2.0 (2025-07-01)
 -------------------------
  * Update dependencies
