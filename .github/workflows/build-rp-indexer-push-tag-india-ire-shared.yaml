@@ -38,5 +38,4 @@ jobs:
       target_repository: weni-ai/kubernetes-manifests-platform
       target_application: rapidpro/indexer
       target_patch_file: deployment.json
-    secrets: inherit
-    
+    secrets: inherit    
