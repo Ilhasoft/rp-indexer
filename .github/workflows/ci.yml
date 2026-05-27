@@ -5,26 +5,34 @@ env:
 jobs:
   test:
     name: Test
-    env:
-      pg-version: "14"
-      es-version: "7.17.6"
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_DB: elastic_test
+          POSTGRES_USER: nyaruka
+          POSTGRES_PASSWORD: nyaruka
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      elastic:
+        image: elasticsearch:7.17.6
+        ports:
+          - 9200:9200
+          - 9300:9300
+        env:
+          discovery.type: single-node
+        options: >-
+          --health-cmd "curl -sf http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install ElasticSearch
-        uses: nyaruka/elasticsearch-action@master
-        with:
-          elastic version: ${{ env.es-version }}
-
-      - name: Install PostgreSQL
-        uses: harmon758/postgresql-action@v1
-        with:
-          postgresql version: ${{ env.pg-version }}
-          postgresql db: elastic_test
-          postgresql user: nyaruka
-          postgresql password: nyaruka
 
       - name: Install Go
         uses: actions/setup-go@v5
@@ -49,6 +57,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Go
         uses: actions/setup-go@v5
