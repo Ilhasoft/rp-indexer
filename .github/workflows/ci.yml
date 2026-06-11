@@ -11,9 +11,9 @@ jobs:
       postgres:
         image: postgres:14-alpine
         env:
-          POSTGRES_DB: elastic_test
-          POSTGRES_USER: nyaruka
-          POSTGRES_PASSWORD: nyaruka
+          POSTGRES_DB: indexer_test
+          POSTGRES_USER: indexer_test
+          POSTGRES_PASSWORD: temba
         ports:
           - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
@@ -43,12 +43,6 @@ jobs:
       - name: Run tests
         run: go test -p=1 -coverprofile=coverage.text -covermode=atomic ./...
 
-      - name: Upload coverage
-        if: success()
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
 
   release:
     name: Release
@@ -69,7 +63,6 @@ jobs:
       - name: Publish release
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: v0.147.2
-          args: release --rm-dist
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
