@@ -3,9 +3,10 @@ name: Build Rapidpro Indexer India and Ireland in Shared (Push Tag)
 on:
   push:
     tags:
-      - '*.*.*-india'
-      - '*.*.*-ire'
+      - '*.*.*-mumbai-staging'
+      - '*.*.*-ireland'
       - '*.*.*-staging'
+      - '*.*.*-mumbai'
 
 jobs:
   setup:
