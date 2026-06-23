@@ -66,7 +66,7 @@ func MakeJSONRequest(method string, url string, body []byte, dest any) (*http.Re
 		formattedJSON.Write(body)
 	}
 
-	l.WithField("request", formattedJSON.String())
+	l = l.With("request", formattedJSON.String())
 
 	if err != nil {
 		l.Error("error making request", "error", err)
