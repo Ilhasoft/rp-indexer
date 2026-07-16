@@ -1,7 +1,7 @@
 name: CI
 on: [push, pull_request]
 env:
-  go-version: "1.21.x"
+  go-version: "1.22.x"
 jobs:
   test:
     name: Test
@@ -9,7 +9,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:14-alpine
+        image: postgres:15-alpine
         env:
           POSTGRES_DB: indexer_test
           POSTGRES_USER: indexer_test
@@ -18,18 +18,13 @@ jobs:
           - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
       elastic:
-        image: elasticsearch:7.17.28
-        ports:
-          - 9200:9200
-          - 9300:9300
+        image: elasticsearch:8.13.4
         env:
           discovery.type: single-node
-          ES_JAVA_OPTS: "-Xms512m -Xmx512m"
-        options: >-
-          --health-cmd "curl -sf http://localhost:9200/_cluster/health"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 20
+          xpack.security.enabled: false
+        ports:
+          - 9200:9200
+        options: --health-cmd "curl http://localhost:9200/_cluster/health" --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
       - name: Checkout code
@@ -61,7 +56,7 @@ jobs:
           go-version: ${{ env.go-version }}
 
       - name: Publish release
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
           args: release --clean
         env:
